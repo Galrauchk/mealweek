@@ -3,42 +3,69 @@ exports.handler = async (event) => {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-  if (!ANTHROPIC_API_KEY) {
-    return { statusCode: 500, body: JSON.stringify({ error: "API key not configured" }) };
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY) {
+    return { statusCode: 500, body: JSON.stringify({ error: "GEMINI_API_KEY not configured" }) };
   }
 
   try {
     const body = JSON.parse(event.body);
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+
+    // Convertir le format Anthropic → Gemini
+    const systemPrompt = body.system || "";
+    const userMessage = body.messages?.[0]?.content || "";
+
+    const geminiBody = {
+      system_instruction: {
+        parts: [{ text: systemPrompt }],
       },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 4096,
-        system: body.system,
-        messages: body.messages,
-      }),
-    });
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: userMessage }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 8192,
+        responseMimeType: "application/json",
+      },
+    };
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(geminiBody),
+      }
+    );
 
     const data = await response.json();
+
     if (!response.ok) {
       return {
         statusCode: response.status,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: data.error?.message || "Anthropic API error" }),
+        body: JSON.stringify({ error: data.error?.message || "Gemini API error" }),
       };
     }
+
+    // Convertir la réponse Gemini → format Anthropic (pour ne rien changer dans le front)
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify(data),
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      },
+      body: JSON.stringify({
+        content: [{ type: "text", text }],
+      }),
     };
   } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: err.message }),
+    };
   }
 };

@@ -25,6 +25,7 @@ export default function App() {
   const [allPlans, setAllPlans] = useLocalStorage("mw_plans_v2", {});
   const [allCourses, setAllCourses] = useLocalStorage("mw_courses_v2", {});
   const [allBatches, setAllBatches] = useLocalStorage("mw_batches_v2", {});
+  const [allValidations, setAllValidations] = useLocalStorage("mw_validations_v2", {});
   const [freezerStock, setFreezerStock] = useLocalStorage("mw_freezer_v2", {});
   const [prefs, setPrefs] = useLocalStorage("mw_prefs_v2", { likes: [], dislikes: [] });
 
@@ -71,6 +72,7 @@ export default function App() {
   const plan = allPlans[weekKey] || {};
   const courses = allCourses[weekKey] || null;
   const batches = allBatches[weekKey] || {};
+  const validations = allValidations[weekKey] || {};
 
   const setPlan = useCallback(fn => {
     setAllPlans(prev => ({ ...prev, [weekKey]: typeof fn === "function" ? fn(prev[weekKey] || {}) : fn }));
@@ -83,6 +85,14 @@ export default function App() {
   const setBatches = useCallback(fn => {
     setAllBatches(prev => ({ ...prev, [weekKey]: typeof fn === "function" ? fn(prev[weekKey] || {}) : fn }));
   }, [weekKey, setAllBatches]);
+
+  const setValidations = useCallback(fn => {
+    setAllValidations(prev => ({ ...prev, [weekKey]: typeof fn === "function" ? fn(prev[weekKey] || {}) : fn }));
+  }, [weekKey, setAllValidations]);
+
+  const resetMealValidation = (day, slot) => {
+    setValidations(v => ({ ...v, [`${day}_${slot}`]: { jeffrey: null, laurine: null } }));
+  };
 
   const weekLabel = (() => {
     const d = weekDates;
@@ -178,6 +188,7 @@ JSON exact (7 jours obligatoires):
         setPlan(parsed);
         setBatches(extractBatches(parsed));
         setCourses(null);
+        setValidations({});
         const allMeals = DAYS.flatMap(day => ["midi", "soir"].map(slot => parsed[day]?.[slot]).filter(Boolean));
         decrementFreezerForMeals(allMeals);
         notify("Semaine générée ✓");
@@ -185,7 +196,7 @@ JSON exact (7 jours obligatoires):
         notify("Erreur de génération — réessaie", true);
       }
     } catch (e) {
-      notify("Erreur réseau", true);
+      notify(e.message?.slice(0, 60) || "Erreur réseau", true);
     }
     setLoadingWeek(false);
   };
@@ -210,10 +221,11 @@ JSON: {"nom":"","description":"","source":"surgele|conserve|frais","freezer_item
         if (BATCH_DAYS[day] && slot === "soir" && parsed.batch && parsed.batch_portions) {
           setBatches(b => ({ ...b, [`${day}_soir`]: { nom: parsed.nom, day, total: parsed.batch_portions, remaining: parsed.batch_portions, batch_used_days: parsed.batch_used_days || [] } }));
         }
+        resetMealValidation(day, slot);
         decrementFreezerForMeals([parsed]);
         notify("Repas changé ✓");
       } else notify("Erreur", true);
-    } catch { notify("Erreur réseau", true); }
+    } catch (e) { notify(e.message?.slice(0, 60) || "Erreur réseau", true); }
     setLoadingCell(null);
   };
 
@@ -236,11 +248,12 @@ JSON: {"midi":{...},"soir":{...}}`;
         if (isBatch && parsed.soir?.batch && parsed.soir?.batch_portions) {
           setBatches(b => ({ ...b, [`${day}_soir`]: { nom: parsed.soir.nom, day, total: parsed.soir.batch_portions, remaining: parsed.soir.batch_portions, batch_used_days: parsed.soir.batch_used_days || [] } }));
         }
+        setValidations(v => ({ ...v, [`${day}_midi`]: { jeffrey: null, laurine: null }, [`${day}_soir`]: { jeffrey: null, laurine: null } }));
         const dayMeals = ["midi", "soir"].map(s => parsed[s]).filter(Boolean);
         decrementFreezerForMeals(dayMeals);
         notify(`${day} régénéré ✓`);
       } else notify("Erreur", true);
-    } catch { notify("Erreur réseau", true); }
+    } catch (e) { notify(e.message?.slice(0, 60) || "Erreur réseau", true); }
     setLoadingCell(null);
   };
 
@@ -288,8 +301,36 @@ JSON:
       const parsed = parseJSON(text);
       if (parsed) { setCourses(parsed); notify("Liste générée ✓"); }
       else notify("Erreur liste", true);
-    } catch { notify("Erreur réseau", true); }
+    } catch (e) { notify(e.message?.slice(0, 60) || "Erreur réseau", true); }
     setLoadingCourses(false);
+  };
+
+  // Validation par les deux utilisateurs
+  const handleValidate = (day, slot, person, approved) => {
+    if (approved === false) {
+      // Rejet → regen automatique
+      resetMealValidation(day, slot);
+      notify(`${person === "jeffrey" ? "Jeffrey" : "Laurine"} n'approuve pas — on trouve mieux ! 🔄`);
+      doMeal(day, slot);
+    } else if (approved === null) {
+      // Annulation d'un vote
+      setValidations(v => {
+        const key = `${day}_${slot}`;
+        const current = v[key] || { jeffrey: null, laurine: null };
+        return { ...v, [key]: { ...current, [person]: null } };
+      });
+    } else {
+      // Approbation
+      setValidations(v => {
+        const key = `${day}_${slot}`;
+        const current = v[key] || { jeffrey: null, laurine: null };
+        const updated = { ...v, [key]: { ...current, [person]: true } };
+        if (updated[key].jeffrey === true && updated[key].laurine === true) {
+          setTimeout(() => notify("✅ Repas approuvé par les deux !"), 50);
+        }
+        return updated;
+      });
+    }
   };
 
   const handleGenWeek = () => {
@@ -308,19 +349,19 @@ JSON:
         <Toast toast={toast} />
 
         {confirmRegen && (
-          <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-            <div style={{ background: "#141414", border: "1px solid #2a2a2a", borderRadius: 18, padding: "24px 20px", maxWidth: 340, width: "100%" }}>
-              <div style={{ fontSize: 20, marginBottom: 8 }}>⚠️</div>
-              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, marginBottom: 8 }}>Remplacer le planning ?</div>
-              <div style={{ fontSize: 13, color: "#666", marginBottom: 20, lineHeight: 1.5 }}>Le planning existant sera effacé et remplacé par une nouvelle génération.</div>
+          <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+            <div style={{ background: "#141210", border: "1px solid #2e2820", borderRadius: 22, padding: "28px 22px", maxWidth: 340, width: "100%" }}>
+              <div style={{ fontSize: 36, marginBottom: 12, textAlign: "center" }}>🔄</div>
+              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 21, marginBottom: 8, textAlign: "center" }}>Nouveau menu ?</div>
+              <div style={{ fontSize: 13, color: "#5a5450", marginBottom: 22, lineHeight: 1.6, textAlign: "center" }}>Le planning actuel sera remplacé. Votre liste de courses sera aussi réinitialisée.</div>
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => { setConfirmRegen(false); doWeek(); }}
-                  style={{ flex: 1, background: "#d4af37", color: "#0a0a0a", border: "none", borderRadius: 12, padding: "12px", fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
-                  Oui, régénérer
+                  style={{ flex: 1, background: "linear-gradient(135deg, #e8c14e, #d4914a)", color: "#0a0a0a", border: "none", borderRadius: 14, padding: "13px", fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+                  ✨ Oui, on change !
                 </button>
                 <button onClick={() => setConfirmRegen(false)}
-                  style={{ flex: 1, background: "#1a1a1a", color: "#f0ebe0", border: "1px solid #2a2a2a", borderRadius: 12, padding: "12px", fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 14, cursor: "pointer" }}>
-                  Annuler
+                  style={{ flex: 1, background: "#1c1a18", color: "#f0ebe0", border: "1px solid #2e2820", borderRadius: 14, padding: "13px", fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 14, cursor: "pointer" }}>
+                  Garder l'actuel
                 </button>
               </div>
             </div>
@@ -331,28 +372,26 @@ JSON:
         <div style={{ background: "#0a0a0a", padding: "env(safe-area-inset-top, 12px) 16px 0", position: "sticky", top: 0, zIndex: 50 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, paddingTop: 8 }}>
             <div>
-              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 24, lineHeight: 1 }}>MealWeek</div>
-              <div style={{ fontSize: 11, color: "#555", marginTop: 2 }}>Jeffrey 💪 & Laurine 🌿</div>
+              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, lineHeight: 1.1, background: "linear-gradient(135deg, #e8c14e, #d4914a)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>MealWeek</div>
+              <div style={{ fontSize: 11, color: "#4a4540", marginTop: 3 }}>Jeffrey 💪 & Laurine 🌿 · En duo</div>
             </div>
-            <div style={{ textAlign: "right", fontSize: 11, color: "#555", background: "#141414", border: "1px solid #1e1e1e", borderRadius: 8, padding: "6px 10px" }}>
-              <div style={{ color: "#d4af37", fontWeight: 700 }}>2 pers.</div>
-              <div>❄️ Surgelé first</div>
-            </div>
+            <div style={{ fontSize: 30 }}>🍽️</div>
           </div>
 
           {/* Tabs */}
-          <div style={{ display: "flex", borderBottom: "1px solid #1a1a1a" }}>
-            {[["plan", "📅", "Planning"], ["courses", "🛒", "Courses"], ["prefs", "❤️", "Préfs"]].map(([k, ic, lb]) => (
+          <div style={{ display: "flex", borderBottom: "1px solid #1e1c1a" }}>
+            {[["plan", "🗓", "Planning"], ["courses", "🛍", "Courses"], ["prefs", "🌸", "Préférences"]].map(([k, ic, lb]) => (
               <button key={k} onClick={() => setTab(k)}
                 style={{
-                  flex: 1, padding: "10px 0",
-                  background: "none", border: "none", color: tab === k ? "#f0ebe0" : "#555",
-                  fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 13,
+                  flex: 1, padding: "11px 0",
+                  background: "none", border: "none", color: tab === k ? "#f0ebe0" : "#4a4540",
+                  fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 12,
                   cursor: "pointer", position: "relative",
                 }}>
-                {ic} {lb}
+                <div style={{ fontSize: 16, marginBottom: 2 }}>{ic}</div>
+                <div>{lb}</div>
                 {tab === k && (
-                  <span style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: 20, height: 2, background: "#d4af37", borderRadius: 2 }} />
+                  <span style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: 24, height: 2, background: "linear-gradient(90deg, #e8c14e, #d4914a)", borderRadius: 2 }} />
                 )}
               </button>
             ))}
@@ -367,6 +406,7 @@ JSON:
               weekOff={weekOff} setWeekOff={setWeekOff}
               batches={batches} freezerStock={freezerStock} setFreezerStock={setFreezerStock}
               loadingWeek={loadingWeek} loadingCell={loadingCell}
+              validations={validations} onValidate={handleValidate}
               onGenWeek={handleGenWeek} onRegenDay={doDay} onRegenMeal={doMeal} onGenCourses={doCourses}
             />
           )}

@@ -35,6 +35,13 @@ BATCH COOKING :
 - Préparer 2 à 4 portions par plat batch
 - Les portions batch peuvent couvrir 2 repas différents dans la semaine
 
+RÈGLE ANTI-RÉPÉTITION ABSOLUE :
+- Les portions d'un même plat batch ne doivent JAMAIS être utilisées pour deux repas consécutifs
+- Exemple INTERDIT : Mercredi soir (batch) → Jeudi midi (même plat) = consécutifs → INTERDIT
+- Exemple INTERDIT : un plat batch utilisé le soir puis le lendemain matin = INTERDIT
+- Minimum 1 repas d'écart entre chaque réutilisation de portions du même batch
+- Ne jamais proposer le même plat deux fois d'affilée dans le planning
+
 BUDGET : viser 50-80€/semaine de courses FRAIS + compléments (hors stock congélo déjà en place)
 
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans texte autour.`;

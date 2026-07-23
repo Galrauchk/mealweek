@@ -10,8 +10,11 @@ export async function askClaude(userMessage, extraSystem = "") {
       messages: [{ role: "user", content: userMessage }],
     }),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
+  if (!res.ok) {
+    const msg = data.error || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
   return data.content?.[0]?.text || "";
 }
 
