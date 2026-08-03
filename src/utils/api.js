@@ -1,5 +1,5 @@
 export async function askClaude(userMessage) {
-  const res = await fetch("/.netlify/functions/ai", {
+  const res = await fetch("/api/ai", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message: userMessage }),

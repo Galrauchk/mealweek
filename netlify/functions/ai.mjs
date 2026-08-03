@@ -34,31 +34,12 @@ function jsonResponse(status, body) {
   });
 }
 
-function parseOrigins(value) {
-  return new Set(
-    String(value || "")
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean)
-      .map((origin) => {
-        try {
-          return new URL(origin).origin;
-        } catch {
-          return "";
-        }
-      })
-      .filter(Boolean),
-  );
-}
-
-export function isAllowedOrigin(request, configuredOrigins) {
+export function isAllowedOrigin(request) {
   const origin = request.headers.get("origin");
   if (!origin || origin === "null") return false;
 
   try {
-    const normalized = new URL(origin).origin;
-    if (normalized === new URL(request.url).origin) return true;
-    return parseOrigins(configuredOrigins).has(normalized);
+    return new URL(origin).origin === new URL(request.url).origin;
   } catch {
     return false;
   }
@@ -117,9 +98,7 @@ export async function handleAiRequest(request, dependencies = {}) {
     });
   }
 
-  const configuredOrigins =
-    dependencies.allowedOrigins ?? process.env.AI_ALLOWED_ORIGINS;
-  if (!isAllowedOrigin(request, configuredOrigins)) {
+  if (!isAllowedOrigin(request)) {
     return jsonResponse(403, { error: "Requête refusée." });
   }
 
@@ -202,10 +181,10 @@ export async function handleAiRequest(request, dependencies = {}) {
 export default handleAiRequest;
 
 export const config = {
+  path: "/api/ai",
   rateLimit: {
-    action: "rate_limit",
-    aggregateBy: "ip",
-    windowLimit: 20,
-    windowSize: 3600,
+    aggregateBy: ["ip", "domain"],
+    windowLimit: 5,
+    windowSize: 180,
   },
 };

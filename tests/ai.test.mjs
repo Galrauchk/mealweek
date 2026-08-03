@@ -1,26 +1,39 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  config,
   handleAiRequest,
   isAllowedOrigin,
   validatePayload,
 } from "../netlify/functions/ai.mjs";
 
-function request(body, origin = "https://mealweek.example") {
-  return new Request("https://mealweek.example/.netlify/functions/ai", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Origin: origin },
-    body: JSON.stringify(body),
+function request(body, origin = "https://mealweek.example", overrides = {}) {
+  return new Request("https://mealweek.example/api/ai", {
+    method: overrides.method || "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(origin ? { Origin: origin } : {}),
+      ...overrides.headers,
+    },
+    body: overrides.body ?? JSON.stringify(body),
   });
 }
 
-test("seule la même origine ou une origine configurée est acceptée", () => {
-  assert.equal(isAllowedOrigin(request({ message: "x" }), undefined), true);
-  assert.equal(
-    isAllowedOrigin(request({ message: "x" }, "https://preview.example"), "https://preview.example"),
-    true,
-  );
+test("seule la même origine est acceptée", () => {
+  assert.equal(isAllowedOrigin(request({ message: "x" })), true);
   assert.equal(isAllowedOrigin(request({ message: "x" }, "https://attacker.example")), false);
+  assert.equal(isAllowedOrigin(request({ message: "x" }, null)), false);
+});
+
+test("la règle de débit Netlify cible le chemin public avec des valeurs valides", () => {
+  assert.deepEqual(config, {
+    path: "/api/ai",
+    rateLimit: {
+      aggregateBy: ["ip", "domain"],
+      windowLimit: 5,
+      windowSize: 180,
+    },
+  });
 });
 
 test("le client ne peut pas remplacer le prompt système", () => {
@@ -66,6 +79,58 @@ test("les erreurs fournisseur restent neutres", async () => {
   }
 });
 
+test("les méthodes, formats et corps invalides sont refusés avant Gemini", async () => {
+  let calls = 0;
+  const dependencies = {
+    apiKey: "test-key",
+    fetchImpl: async () => {
+      calls += 1;
+      return Response.json({});
+    },
+  };
+
+  const getResponse = await handleAiRequest(new Request("https://mealweek.example/api/ai"), dependencies);
+  const typeResponse = await handleAiRequest(
+    request({}, undefined, { headers: { "Content-Type": "text/plain" }, body: "texte" }),
+    dependencies,
+  );
+  const jsonResponse = await handleAiRequest(
+    request({}, undefined, { body: "{" }),
+    dependencies,
+  );
+  const originResponse = await handleAiRequest(request({ message: "x" }, null), dependencies);
+
+  assert.equal(getResponse.status, 405);
+  assert.equal(typeResponse.status, 415);
+  assert.equal(jsonResponse.status, 400);
+  assert.equal(originResponse.status, 403);
+  assert.equal(calls, 0);
+});
+
+test("une configuration absente et une réponse Gemini malformée échouent proprement", async () => {
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const missingKey = await handleAiRequest(request({ message: "Menu" }), { apiKey: "" });
+    const malformed = await handleAiRequest(request({ message: "Menu" }), {
+      apiKey: "test-key",
+      fetchImpl: async () => Response.json({ candidates: [] }),
+    });
+    const thrown = await handleAiRequest(request({ message: "Menu" }), {
+      apiKey: "test-key",
+      fetchImpl: async () => {
+        throw new DOMException("Timed out", "TimeoutError");
+      },
+    });
+
+    assert.equal(missingKey.status, 503);
+    assert.equal(malformed.status, 502);
+    assert.equal(thrown.status, 502);
+  } finally {
+    console.error = originalError;
+  }
+});
+
 test("un corps trop grand est refusé avant tout appel fournisseur", async () => {
   let calls = 0;
   const response = await handleAiRequest(request({ message: "x".repeat(17_000) }), {
@@ -75,6 +140,25 @@ test("un corps trop grand est refusé avant tout appel fournisseur", async () =>
       return Response.json({});
     },
   });
+  assert.equal(response.status, 413);
+  assert.equal(calls, 0);
+});
+
+test("une taille déclarée excessive est refusée avant lecture", async () => {
+  let calls = 0;
+  const oversized = request(
+    { message: "x" },
+    undefined,
+    { headers: { "Content-Length": "20000" } },
+  );
+  const response = await handleAiRequest(oversized, {
+    apiKey: "test-key",
+    fetchImpl: async () => {
+      calls += 1;
+      return Response.json({});
+    },
+  });
+
   assert.equal(response.status, 413);
   assert.equal(calls, 0);
 });

@@ -1,6 +1,6 @@
 # MealWeek 🍽️
 
-App privée de planification des repas pour deux personnes.
+Application personnelle de planification des repas pour deux personnes.
 
 ## Stack
 - React + Vite
@@ -21,8 +21,11 @@ Dans Netlify, ajouter :
 
 ```
 GEMINI_API_KEY=valeur-secrete
-AI_ALLOWED_ORIGINS=https://preview.example.netlify.app
 ```
+
+La Function accepte uniquement les requêtes navigateur de même origine. Cette vérification n'est
+pas une authentification. Si l'application doit rester inaccessible au public, la protection du
+site Netlify doit couvrir le site et ses Functions avant la mise en production.
 
 Pour le dev local, créer un fichier `.env` à la racine :
 ```
@@ -37,13 +40,13 @@ netlify dev   # Lance Vite + les Netlify Functions en même temps sur http://loc
 
 ## Déploiement Netlify
 
-### Option A — Via GitHub (recommandé)
+### Option A - Via GitHub (recommandé)
 1. Push le projet sur un dépôt GitHub privé
 2. Importer le dépôt dans Netlify
 3. Ajouter `GEMINI_API_KEY` dans les variables serveur
 4. Deploy automatique à chaque push
 
-### Option B — CLI
+### Option B - CLI
 ```bash
 netlify login
 netlify init
@@ -73,7 +76,7 @@ mealweek/
 │   ├── App.jsx
 │   └── main.jsx
 ├── index.html
-├── vite.config.js
+├── vite.config.mjs
 ├── netlify.toml
 └── package.json
 ```
