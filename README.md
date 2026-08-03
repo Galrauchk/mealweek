@@ -1,12 +1,12 @@
 # MealWeek 🍽️
 
-App de planification des repas pour Jeffrey & Laurine.
+App privée de planification des repas pour deux personnes.
 
 ## Stack
 - React + Vite
 - Netlify (hosting + Functions)
 - localStorage (persistance)
-- API Anthropic Claude via Netlify Function sécurisée
+- API Gemini via une Netlify Function sécurisée
 
 ## Setup local
 
@@ -17,15 +17,16 @@ npm install -g netlify-cli   # si pas déjà installé
 
 ## Variables d'environnement
 
-Dans Netlify → Site settings → Environment variables, ajouter :
+Dans Netlify, ajouter :
 
 ```
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx
+GEMINI_API_KEY=valeur-secrete
+AI_ALLOWED_ORIGINS=https://preview.example.netlify.app
 ```
 
 Pour le dev local, créer un fichier `.env` à la racine :
 ```
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx
+GEMINI_API_KEY=valeur-secrete
 ```
 
 ## Développement local
@@ -37,9 +38,9 @@ netlify dev   # Lance Vite + les Netlify Functions en même temps sur http://loc
 ## Déploiement Netlify
 
 ### Option A — Via GitHub (recommandé)
-1. Push le projet sur un repo GitHub (compte Galrauchk)
-2. Netlify → "Add new site" → "Import from Git"
-3. Ajouter la variable `ANTHROPIC_API_KEY` dans les env vars
+1. Push le projet sur un dépôt GitHub privé
+2. Importer le dépôt dans Netlify
+3. Ajouter `GEMINI_API_KEY` dans les variables serveur
 4. Deploy automatique à chaque push
 
 ### Option B — CLI
@@ -55,7 +56,7 @@ netlify deploy --prod
 mealweek/
 ├── netlify/
 │   └── functions/
-│       └── claude.js          # Proxy API Claude (clé cachée serveur)
+│       └── ai.mjs             # Proxy Gemini, clé et prompt côté serveur
 ├── src/
 │   ├── components/
 │   │   ├── UI.jsx             # Composants réutilisables
@@ -67,7 +68,7 @@ mealweek/
 │   ├── hooks/
 │   │   └── useLocalStorage.js
 │   ├── utils/
-│   │   ├── api.js             # Appels Claude + helpers
+│   │   ├── api.js             # Appels au proxy IA et helpers
 │   │   └── constants.js       # Config globale
 │   ├── App.jsx
 │   └── main.jsx
