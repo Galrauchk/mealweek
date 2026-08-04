@@ -1,17 +1,11 @@
-import { SYSTEM_PROMPT } from "./constants";
-
-export async function askClaude(userMessage, extraSystem = "") {
-  const system = extraSystem ? `${SYSTEM_PROMPT}\n\n${extraSystem}` : SYSTEM_PROMPT;
-  const res = await fetch("/.netlify/functions/claude", {
+export async function askClaude(userMessage) {
+  const res = await fetch("/api/ai", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      system,
-      messages: [{ role: "user", content: userMessage }],
-    }),
+    body: JSON.stringify({ message: userMessage }),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data.content?.[0]?.text || "";
 }
 
