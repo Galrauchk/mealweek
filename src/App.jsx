@@ -376,9 +376,8 @@ JSON:
               generating={loadingCourses} onGenerate={doCourses}
             />
           )}
-          {tab === "prefs" && (
-            <PrefsTab prefs={prefs} setPrefs={setPrefs} />
-          )}
+          {tab === "prefs" && <PrefsTab prefs={prefs} setPrefs={setPrefs} />}
+          <p data-webtrafic-credit style={{ margin: "1rem", textAlign: "center", fontSize: "0.75rem", lineHeight: 1.6 }}>Site réalisé par <a href="https://webtrafic.fr/" style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: "0.2em" }}>WebTrafic</a></p>
         </div>
       </div>
     </>
